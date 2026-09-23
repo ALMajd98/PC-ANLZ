@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PC Build Analyzer — تحليل التجميعات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg:        #060810;
+  --surface:   #0d1117;
+  --surface-2: #161b27;
+  --surface-3: #1e2535;
+  --border:    rgba(255,255,255,.06);
+  --border-hi: rgba(255,255,255,.12);
+
+  --cyan:   #22d3ee;
+  --indigo: #818cf8;
+  --gold:   #f59e0b;
+  --green:  #34d399;
+  --rose:   #f43f5e;
+  --slate:  #94a3b8;
+
+  --text-1: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #475569;
+
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+
+  --font: 'Tajawal', sans-serif;
+  --ease: cubic-bezier(.16,1,.3,1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text-2);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+
+/* ============================================================
+   NOISE OVERLAY
+   ============================================================ */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:0; opacity:.4;
+}
+
+/* ============================================================
+   AMBIENT LIGHTS
+   ============================================================ */
+.ambient {
+  position:fixed; border-radius:50%;
+  filter: blur(120px); pointer-events:none; z-index:0;
+}
+.ambient-1 {
+  width:700px; height:700px;
+  top:-200px; right:-200px;
+  background: radial-gradient(circle, rgba(34,211,238,.07) 0%, transparent 70%);
+}
+.ambient-2 {
+  width:600px; height:600px;
+  bottom:-100px; left:-100px;
+  background: radial-gradient(circle, rgba(129,140,248,.06) 0%, transparent 70%);
+}
+.ambient-3 {
+  width:400px; height:400px;
+  top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  background: radial-gradient(circle, rgba(245,158,11,.04) 0%, transparent 70%);
+}
+
+/* ============================================================
+   LAYOUT WRAPPER
+   ============================================================ */
+.page { position:relative; z-index:1; }
+
+.wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  padding: 16px 0;
+  background: rgba(6,8,16,.7);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 1rem; font-weight: 700; color: var(--text-1);
+}
+
+.nav-logo-icon {
+  width: 34px; height: 34px;
+  background: linear-gradient(135deg, var(--cyan), var(--indigo));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.nav-logo-icon i { width: 18px; height: 18px; color: white; }
+
+.nav-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  background: rgba(34,211,238,.08);
+  border: 1px solid rgba(34,211,238,.2);
+  border-radius: 99px;
+  font-size: 0.78rem; color: var(--cyan); font-weight: 500;
+}
+
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--green);
+  animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%,100% { opacity:1; }
+  50% { opacity:.3; }
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero {
+  padding: 100px 0 80px;
+  text-align: center;
+}
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px;
+  background: rgba(129,140,248,.08);
+  border: 1px solid rgba(129,140,248,.2);
+  border-radius: 99px;
+  font-size: 0.78rem; color: var(--indigo); font-weight: 500;
+  margin-bottom: 28px;
+}
+
+.hero h1 {
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  font-weight: 900;
+  color: var(--text-1);
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  margin-bottom: 20px;
+}
+
+.hero h1 .gradient-text {
+  background: linear-gradient(90deg, var(--cyan), var(--indigo));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero p {
+  font-size: 1.1rem;
+  color: var(--text-2);
+  max-width: 600px;
+  margin: 0 auto 48px;
+  font-weight: 300;
+}
+
+/* Stats Row */
+.hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.hero-stat {
+  text-align: center;
+}
+
+.hero-stat-num {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-1);
+  letter-spacing: -.02em;
+}
+
+.hero-stat-label {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.divider-v {
+  width: 1px;
+  height: 40px;
+  background: var(--border);
+  align-self: center;
+}
+
+/* ============================================================
+   SECTION HEADERS
+   ============================================================ */
+.section { padding: 80px 0; }
+
+.section-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.75rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--cyan);
+  margin-bottom: 16px;
+}
+
+.section-label i { width: 14px; height: 14px; }
+
+.section-title {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 800;
+  color: var(--text-1);
+  letter-spacing: -.02em;
+  margin-bottom: 12px;
+}
+
+.section-sub {
+  font-size: .95rem;
+  color: var(--text-2);
+  max-width: 560px;
+  font-weight: 300;
+}
+
+/* ============================================================
+   MODE TABS
+   ============================================================ */
+.tabs-container {
+  display: flex;
+  gap: 8px;
+  margin: 40px 0;
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: .85rem; font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  transition: all .25s var(--ease);
+}
+
+.tab:hover { color: var(--text-2); border-color: var(--border-hi); }
+
+.tab.active {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--border-hi);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04);
+}
+
+.tab i { width: 16px; height: 16px; }
+
+/* ============================================================
+   OFFER CARDS GRID
+   ============================================================ */
+.offers-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width:1024px) {
+  .offers-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width:640px) {
+  .offers-grid { grid-template-columns: 1fr; }
+}
+
+.offer-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease);
+  position: relative;
+}
+
+.offer-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 64px rgba(0,0,0,.4);
+}
+
+.offer-card.featured {
+  border-color: rgba(34,211,238,.25);
+  box-shadow: 0 0 0 1px rgba(34,211,238,.1), 0 20px 60px rgba(0,0,0,.5);
+}
+
+/* Top accent bar */
+.card-accent-bar {
+  height: 3px;
+  width: 100%;
+}
+
+.bar-gold { background: linear-gradient(90deg, var(--gold), #fde68a); }
+.bar-indigo { background: linear-gradient(90deg, var(--indigo), #c4b5fd); }
+.bar-slate { background: var(--surface-3); }
+
+.card-body { padding: 28px; }
+
+/* Card Header */
+.card-rank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.rank-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+}
+
+.chip-gold {
+  background: rgba(245,158,11,.12);
+  color: var(--gold);
+  border: 1px solid rgba(245,158,11,.25);
+}
+
+.chip-indigo {
+  background: rgba(129,140,248,.1);
+  color: var(--indigo);
+  border: 1px solid rgba(129,140,248,.2);
+}
+
+.chip-slate {
+  background: rgba(148,163,184,.08);
+  color: var(--slate);
+  border: 1px solid rgba(148,163,184,.15);
+}
+
+.card-offer-num {
+  font-size: .75rem;
+  color: var(--text-3);
+}
+
+.card-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-1);
+  letter-spacing: -.02em;
+  margin-bottom: 4px;
+}
+
+.card-price {
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: var(--text-1);
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+
+.card-price sub {
+  font-size: .9rem;
+  color: var(--text-3);
+  font-weight: 400;
+  vertical-align: baseline;
+}
+
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+/* Spec Rows */
+.spec-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.spec-row:last-child { border-bottom: none; }
+
+.spec-icon-wrap {
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.spec-icon-wrap i { width: 15px; height: 15px; color: var(--text-3); }
+
+.spec-text { flex: 1; }
+.spec-name { font-size: .72rem; color: var(--text-3); margin-bottom: 2px; }
+.spec-val { font-size: .88rem; font-weight: 600; color: var(--text-1); }
+.spec-sub { font-size: .72rem; color: var(--text-3); margin-top: 1px; }
+
+/* Perf Meter */
+.perf-bar-wrap { margin-top: 20px; }
+
+.perf-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: .75rem;
+  margin-bottom: 6px;
+}
+
+.perf-track {
+  height: 5px;
+  background: var(--surface-3);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.perf-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 1.2s var(--ease);
+}
+
+.fill-cyan   { background: linear-gradient(90deg,#0e7490,var(--cyan)); }
+.fill-indigo { background: linear-gradient(90deg,#4338ca,var(--indigo)); }
+.fill-slate  { background: linear-gradient(90deg,#334155,#64748b); }
+
+/* Feature Tags */
+.feature-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.ftag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: .7rem; font-weight: 600;
+}
+
+.ftag-green { background:rgba(52,211,153,.1); color:var(--green); }
+.ftag-rose  { background:rgba(244,63,94,.1);  color:var(--rose);  }
+.ftag-slate { background:rgba(148,163,184,.08); color:var(--slate); }
+
+/* ============================================================
+   RADAR CHART
+   ============================================================ */
+.chart-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 60px;
+}
+
+@media (max-width:768px) {
+  .chart-section { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 28px;
+}
+
+.chart-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 4px;
+}
+
+.chart-card-sub {
+  font-size: .78rem;
+  color: var(--text-3);
+  margin-bottom: 24px;
+}
+
+/* ============================================================
+   COMPARISON TABLE
+   ============================================================ */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin-top: 40px;
+}
+
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+.cmp-table thead tr {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cmp-table th {
+  padding: 16px 20px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.cmp-table th.winner-col {
+  color: var(--cyan);
+  background: rgba(34,211,238,.04);
+}
+
+.cmp-table td {
+  padding: 14px 20px;
+  font-size: .875rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cmp-table tr:last-child td { border-bottom: none; }
+
+.cmp-table td:first-child {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.cmp-table td.winner-col {
+  background: rgba(34,211,238,.03);
+}
+
+.cmp-table tr:hover td { background: rgba(255,255,255,.015); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+.badge-green { background:rgba(52,211,153,.1); color:var(--green); }
+.badge-rose  { background:rgba(244,63,94,.1);  color:var(--rose);  }
+.badge-slate { background:rgba(148,163,184,.08); color:var(--slate); }
+.badge-gold  { background:rgba(245,158,11,.1);  color:var(--gold);  }
+
+/* ============================================================
+   NEGOTIATION SECTION
+   ============================================================ */
+.neg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 40px;
+}
+
+@media (max-width:768px) {
+  .neg-grid { grid-template-columns: 1fr; }
+}
+
+.neg-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .3s;
+}
+
+.neg-card:hover { border-color: var(--border-hi); }
+
+.neg-card::before {
+  content:'';
+  position:absolute;
+  top:0; right:0;
+  width: 100%; height: 2px;
+}
+
+.neg-card.pri-1::before { background: linear-gradient(90deg,var(--gold),#fde68a); }
+.neg-card.pri-2::before { background: linear-gradient(90deg,var(--cyan),#67e8f9); }
+.neg-card.pri-3::before { background: linear(90deg,var(--surface-3),var(--slate)); }
+
+.neg-priority {
+  font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; margin-bottom: 8px;
+}
+
+.neg-priority.c-gold   { color: var(--gold); }
+.neg-priority.c-cyan   { color: var(--cyan); }
+.neg-priority.c-slate  { color: var(--slate); }
+
+.neg-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 16px;
+}
+
+.price-row-n {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+}
+
+.price-row-n:last-child { border-bottom: none; }
+
+.price-row-n .label { color: var(--text-3); }
+
+.price-row-n .val { font-weight: 600; color: var(--text-1); }
+.price-row-n .val.strike { text-decoration: line-through; color: var(--rose); }
+.price-row-n .val.target { color: var(--green); font-size: 1.1rem; }
+.price-row-n .val.max    { color: var(--gold); }
+
+/* ============================================================
+   VERDICT
+   ============================================================ */
+.verdict-section {
+  padding: 80px 0 100px;
+}
+
+.verdict-inner {
+  background: var(--surface);
+  border: 1px solid rgba(34,211,238,.15);
+  border-radius: var(--r-xl);
+  padding: 60px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 40px 80px rgba(0,0,0,.4), 0 0 0 1px rgba(34,211,238,.05);
+}
+
+.verdict-inner::before {
+  content:'';
+  position:absolute;
+  top:-100px; left:50%; transform:translateX(-50%);
+  width:600px; height:300px;
+  background: radial-gradient(ellipse at top, rgba(34,211,238,.08), transparent 70%);
+  pointer-events:none;
+}
+
+.verdict-icon-ring {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(34,211,238,.3);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  background: rgba(34,211,238,.05);
+  box-shadow: 0 0 40px rgba(34,211,238,.15);
+}
+
+.verdict-icon-ring i { width: 32px; height: 32px; color: var(--cyan); }
+
+.verdict-inner h2 {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 900;
+  color: var(--text-1);
+  letter-spacing: -.03em;
+  margin-bottom: 16px;
+}
+
+.verdict-inner p {
+  font-size: 1rem;
+  color: var(--text-2);
+  max-width: 680px;
+  margin: 0 auto 32px;
+  line-height: 1.8;
+  font-weight: 300;
+}
+
+.verdict-highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 28px;
+  background: rgba(34,211,238,.08);
+  border: 1px solid rgba(34,211,238,.2);
+  border-radius: 12px;
+  color: var(--cyan);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 28px 0;
+  text-align: center;
+  font-size: .78rem;
+  color: var(--text-3);
+}
+
+/* ============================================================
+   SCROLL REVEAL
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity .8s var(--ease), transform .8s var(--ease);
+}
+
+.reveal.in { opacity:1; transform:none; }
+
+.reveal-delay-1 { transition-delay: .1s; }
+.reveal-delay-2 { transition-delay: .2s; }
+.reveal-delay-3 { transition-delay: .3s; }
+
+</style>
+</head>
+<body>
+
+<div class="ambient ambient-1"></div>
+<div class="ambient ambient-2"></div>
+<div class="ambient ambient-3"></div>
+
+<div class="page">
+
+<!-- ============================================================
+     NAV
+     ============================================================ -->
+<nav>
+  <div class="wrap nav-inner">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">
+        <i data-lucide="cpu"></i>
+      </div>
+      PC Build Analyzer
+    </div>
+    <div class="nav-pill">
+      <span class="live-dot"></span>
+      تقرير مباشر
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-badge reveal">
+      <i data-lucide="bar-chart-2" style="width:14px;height:14px;"></i>
+      تحليل هندسي معمّق لثلاثة عروض
+    </div>
+
+    <h1 class="reveal">
+      قارن، حلّل، <br>
+      <span class="gradient-text">واتخذ القرار الصحيح</span>
+    </h1>
+
+    <p class="reveal">
+      مقارنة تقنية شاملة مبنية على معايير أداء المعالجة والمونتاج والألعاب وجدوى الاستثمار.
+    </p>
+
+    <div class="hero-stats reveal">
+      <div class="hero-stat">
+        <div class="hero-stat-num">3</div>
+        <div class="hero-stat-label">عروض مقارنة</div>
+      </div>
+      <div class="divider-v"></div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">12+</div>
+        <div class="hero-stat-label">معيار تقني</div>
+      </div>
+      <div class="divider-v"></div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">1</div>
+        <div class="hero-stat-label">فائز واضح</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     OFFERS SECTION
+     ============================================================ -->
+<section class="section">
+  <div class="wrap">
+
+    <div class="section-label reveal">
+      <i data-lucide="layout-grid"></i>
+      العروض المطروحة
+    </div>
+    <h2 class="section-title reveal">نظرة سريعة على المواصفات</h2>
+    <p class="section-sub reveal">كل عرض بكل تفصيلاته، مع مؤشرات أداء بصرية واضحة.</p>
+
+    <!-- Tabs -->
+    <div class="tabs-container reveal">
+      <button class="tab active" onclick="switchTab(this,'all')">
+        <i data-lucide="layers"></i> نظرة عامة
+      </button>
+      <button class="tab" onclick="switchTab(this,'editing')">
+        <i data-lucide="video"></i> المونتاج والرندر
+      </button>
+      <button class="tab" onclick="switchTab(this,'gaming')">
+        <i data-lucide="gamepad-2"></i> الألعاب
+      </button>
+    </div>
+
+    <!-- Offers Grid -->
+    <div class="offers-grid">
+
+      <!-- OFFER 2 — WINNER -->
+      <div class="offer-card featured reveal">
+        <div class="card-accent-bar bar-gold"></div>
+        <div class="card-body">
+
+          <div class="card-rank-row">
+            <span class="rank-chip chip-gold">
+              <i data-lucide="crown" style="width:12px;height:12px;"></i>
+              المركز الأول
+            </span>
+            <span class="card-offer-num">العرض الثاني</span>
+          </div>
+
+          <div class="card-title">i5-14400F + RTX 4060 Ti</div>
+          <div class="card-price">3,700 <sub>ريال</sub></div>
+
+          <div class="divider"></div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="cpu"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">المعالج</div>
+              <div class="spec-val">Intel i5-14400F</div>
+              <div class="spec-sub">10 أنوية / 16 خيط — الجيل الرابع عشر</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="monitor"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">كرت الشاشة</div>
+              <div class="spec-val">RTX 4060 Ti 8GB — Gigabyte</div>
+              <div class="spec-sub">DLSS 3 + AV1 Encoder + Frame Gen</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="hard-drive"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">التخزين</div>
+              <div class="spec-val">2TB الإجمالي</div>
+              <div class="spec-sub">Samsung 980 Pro (7000 MB/s) + 1TB Kingston</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="memory-stick"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">الذاكرة العشوائية</div>
+              <div class="spec-val">16GB DDR5 RGB</div>
+              <div class="spec-sub">جيل خامس — سرعة ممتازة</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="circuit-board"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">اللوحة الأم</div>
+              <div class="spec-val">MSI PRO B760M-B</div>
+              <div class="spec-sub">DDR5 — مناسبة ومستقرة</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="wind"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">الكيس والتبريد</div>
+              <div class="spec-val">Dual Chamber — 4 مراوح RGB</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Perf Bars -->
+          <div class="perf-bar-wrap">
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء المونتاج والرندر</span>
+              <span style="color:var(--cyan);font-weight:700;font-size:.8rem;">95%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-cyan" style="width:95%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">سرعة التخزين (SSD)</span>
+              <span style="color:var(--cyan);font-weight:700;font-size:.8rem;">7000 MB/s</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-cyan" style="width:98%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء الألعاب (FPS)</span>
+              <span style="color:var(--cyan);font-weight:700;font-size:.8rem;">90%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-cyan" style="width:90%;"></div>
+            </div>
+          </div>
+
+          <!-- Feature Tags -->
+          <div class="feature-tags">
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> DLSS 3</span>
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> AV1 Encoder</span>
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> DDR5</span>
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> 2TB SSD</span>
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> 10 أنوية</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- OFFER 1 -->
+      <div class="offer-card reveal reveal-delay-1">
+        <div class="card-accent-bar bar-indigo"></div>
+        <div class="card-body">
+
+          <div class="card-rank-row">
+            <span class="rank-chip chip-indigo">
+              <i data-lucide="medal" style="width:12px;height:12px;"></i>
+              المركز الثاني
+            </span>
+            <span class="card-offer-num">العرض الأول</span>
+          </div>
+
+          <div class="card-title">i5-12400F + RTX 4060 Ti</div>
+          <div class="card-price">3,500 <sub>ريال</sub></div>
+
+          <div class="divider"></div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="cpu"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">المعالج</div>
+              <div class="spec-val">Intel i5-12400F</div>
+              <div class="spec-sub">6 أنوية / 12 خيط — الجيل الثاني عشر</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="monitor"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">كرت الشاشة</div>
+              <div class="spec-val">RTX 4060 Ti 8GB</div>
+              <div class="spec-sub">DLSS 3 + AV1 Encoder</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="hard-drive"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">التخزين</div>
+              <div class="spec-val">1TB T-Force SSD</div>
+              <div class="spec-sub">سرعة قياسية (~3500 MB/s)</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="memory-stick"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">الذاكرة العشوائية</div>
+              <div class="spec-val">16GB DDR5 (4800MHz)</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="droplets"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">التبريد</div>
+              <div class="spec-val">مبرد مائي مرفق</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="perf-bar-wrap">
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء المونتاج والرندر</span>
+              <span style="color:var(--indigo);font-weight:700;font-size:.8rem;">72%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-indigo" style="width:72%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">سرعة التخزين (SSD)</span>
+              <span style="color:var(--indigo);font-weight:700;font-size:.8rem;">3500 MB/s</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-indigo" style="width:50%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء الألعاب (FPS)</span>
+              <span style="color:var(--indigo);font-weight:700;font-size:.8rem;">88%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-indigo" style="width:88%;"></div>
+            </div>
+          </div>
+
+          <div class="feature-tags">
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> DLSS 3</span>
+            <span class="ftag ftag-green"><i data-lucide="check" style="width:11px;"></i> AV1</span>
+            <span class="ftag ftag-rose"><i data-lucide="x" style="width:11px;"></i> 6 أنوية فقط</span>
+            <span class="ftag ftag-rose"><i data-lucide="x" style="width:11px;"></i> 1TB فقط</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- OFFER 3 -->
+      <div class="offer-card reveal reveal-delay-2">
+        <div class="card-accent-bar bar-slate"></div>
+        <div class="card-body">
+
+          <div class="card-rank-row">
+            <span class="rank-chip chip-slate">
+              <i data-lucide="award" style="width:12px;height:12px;"></i>
+              المركز الثالث
+            </span>
+            <span class="card-offer-num">العرض الثالث</span>
+          </div>
+
+          <div class="card-title">i5-12400F + RTX 3060 Ti</div>
+          <div class="card-price">2,900 <sub>ريال</sub></div>
+
+          <div class="divider"></div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="cpu"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">المعالج</div>
+              <div class="spec-val">Intel i5-12400F</div>
+              <div class="spec-sub">6 أنوية / 12 خيط</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="monitor"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">كرت الشاشة</div>
+              <div class="spec-val">RTX 3060 Ti 8GB</div>
+              <div class="spec-sub">جيل قديم — بدون DLSS 3 أو AV1</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="hard-drive"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">التخزين</div>
+              <div class="spec-val">1TB Kingston SSD</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="memory-stick"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">الذاكرة العشوائية</div>
+              <div class="spec-val">16GB DDR4</div>
+              <div class="spec-sub">جيل رابع — أقل كفاءة</div>
+            </div>
+          </div>
+
+          <div class="spec-row">
+            <div class="spec-icon-wrap"><i data-lucide="circuit-board"></i></div>
+            <div class="spec-text">
+              <div class="spec-name">اللوحة الأم</div>
+              <div class="spec-val">MSI Z790 TOMAHAWK WIFI</div>
+              <div class="spec-sub">بوردة قوية ولكن زائدة عن الحاجة</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="perf-bar-wrap">
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء المونتاج والرندر</span>
+              <span style="color:var(--slate);font-weight:700;font-size:.8rem;">58%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-slate" style="width:58%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">سرعة التخزين (SSD)</span>
+              <span style="color:var(--slate);font-weight:700;font-size:.8rem;">3000 MB/s</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-slate" style="width:42%;"></div>
+            </div>
+
+            <div class="perf-label-row">
+              <span style="color:var(--text-3);font-size:.75rem;">أداء الألعاب (FPS)</span>
+              <span style="color:var(--slate);font-weight:700;font-size:.8rem;">70%</span>
+            </div>
+            <div class="perf-track">
+              <div class="perf-fill fill-slate" style="width:70%;"></div>
+            </div>
+          </div>
+
+          <div class="feature-tags">
+            <span class="ftag ftag-rose"><i data-lucide="x" style="width:11px;"></i> بدون DLSS 3</span>
+            <span class="ftag ftag-rose"><i data-lucide="x" style="width:11px;"></i> بدون AV1</span>
+            <span class="ftag ftag-rose"><i data-lucide="x" style="width:11px;"></i> DDR4 قديم</span>
+            <span class="ftag ftag-slate">سعر منخفض</span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-section">
+      <div class="chart-card reveal">
+        <div class="chart-card-title">مقارنة الأداء الشاملة</div>
+        <div class="chart-card-sub">رادار مقارنة للمعايير الأساسية الستة</div>
+        <canvas id="radarChart" height="280"></canvas>
+      </div>
+
+      <div class="chart-card reveal reveal-delay-1">
+        <div class="chart-card-title">مقارنة سرعة التخزين</div>
+        <div class="chart-card-sub">سرعة القراءة التسلسلية (MB/s)</div>
+        <canvas id="storageChart" height="280"></canvas>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================
+     COMPARISON TABLE
+     ============================================================ -->
+<section class="section" style="padding-top:0;">
+  <div class="wrap">
+
+    <div class="section-label reveal">
+      <i data-lucide="table-2"></i>
+      المقارنة التقنية
+    </div>
+    <h2 class="section-title reveal">جدول المعايير التفصيلية</h2>
+
+    <div class="table-wrap reveal">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>المعيار التقني</th>
+            <th>العرض الأول</th>
+            <th class="winner-col">العرض الثاني (الفائز)</th>
+            <th>العرض الثالث</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>عدد أنوية المعالج</td>
+            <td>6 أنوية أداء</td>
+            <td class="winner-col"><span class="badge badge-gold">10 أنوية (الأقوى)</span></td>
+            <td>6 أنوية أداء</td>
+          </tr>
+          <tr>
+            <td>جيل المعالج</td>
+            <td>الجيل الثاني عشر</td>
+            <td class="winner-col"><span class="badge badge-gold">الجيل الرابع عشر</span></td>
+            <td>الجيل الثاني عشر</td>
+          </tr>
+          <tr>
+            <td>كرت الشاشة</td>
+            <td>RTX 4060 Ti</td>
+            <td class="winner-col">RTX 4060 Ti</td>
+            <td><span class="badge badge-rose">RTX 3060 Ti (أقدم)</span></td>
+          </tr>
+          <tr>
+            <td>دعم DLSS 3</td>
+            <td><span class="badge badge-green">مدعوم</span></td>
+            <td class="winner-col"><span class="badge badge-green">مدعوم</span></td>
+            <td><span class="badge badge-rose">غير مدعوم</span></td>
+          </tr>
+          <tr>
+            <td>مشفر AV1 للمونتاج</td>
+            <td><span class="badge badge-green">مدعوم</span></td>
+            <td class="winner-col"><span class="badge badge-green">مدعوم</span></td>
+            <td><span class="badge badge-rose">غير مدعوم</span></td>
+          </tr>
+          <tr>
+            <td>سعة التخزين</td>
+            <td>1,000 GB</td>
+            <td class="winner-col"><span class="badge badge-gold">2,000 GB (الأكبر)</span></td>
+            <td>1,000 GB</td>
+          </tr>
+          <tr>
+            <td>سرعة قراءة SSD</td>
+            <td>~3,500 MB/s</td>
+            <td class="winner-col"><span class="badge badge-gold">7,000 MB/s (Samsung PRO)</span></td>
+            <td>~3,000 MB/s</td>
+          </tr>
+          <tr>
+            <td>جيل الذاكرة العشوائية</td>
+            <td>DDR5</td>
+            <td class="winner-col">DDR5</td>
+            <td><span class="badge badge-rose">DDR4 (أقدم)</span></td>
+          </tr>
+          <tr>
+            <td>اللوحة الأم</td>
+            <td>B760 Gaming X (ممتازة)</td>
+            <td class="winner-col">B760M (كافية ومستقرة)</td>
+            <td>Z790 (قوية لكن زائدة)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================
+     NEGOTIATION SECTION
+     ============================================================ -->
+<section class="section" style="padding-top:0;">
+  <div class="wrap">
+
+    <div class="section-label reveal">
+      <i data-lucide="target"></i>
+      استراتيجية الشراء
+    </div>
+    <h2 class="section-title reveal">خريطة التفاوض</h2>
+    <p class="section-sub reveal">الأسعار المثلى لكل عرض بناءً على تحليل السوق والمواصفات.</p>
+
+    <div class="neg-grid">
+
+      <div class="neg-card pri-1 reveal">
+        <div class="neg-priority c-gold">الأولوية الأولى</div>
+        <div class="neg-name">العرض الثاني</div>
+        <div class="price-row-n">
+          <span class="label">السعر المطروح</span>
+          <span class="val strike">3,700 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">ابدأ السوم بـ</span>
+          <span class="val">3,300 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">حدك الأقصى</span>
+          <span class="val max">3,500 ريال</span>
+        </div>
+        <div class="price-row-n" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <span class="label">التوصية</span>
+          <span class="val target">صفقة ممتازة</span>
+        </div>
+      </div>
+
+      <div class="neg-card pri-2 reveal reveal-delay-1">
+        <div class="neg-priority c-cyan">الأولوية الثانية (بديل)</div>
+        <div class="neg-name">العرض الأول</div>
+        <div class="price-row-n">
+          <span class="label">السعر المطروح</span>
+          <span class="val strike">3,500 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">ابدأ السوم بـ</span>
+          <span class="val">2,900 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">حدك الأقصى</span>
+          <span class="val max">3,100 ريال</span>
+        </div>
+        <div class="price-row-n" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <span class="label">التوصية</span>
+          <span class="val" style="color:var(--cyan);">جيد إذا نزل السعر</span>
+        </div>
+      </div>
+
+      <div class="neg-card pri-3 reveal reveal-delay-2">
+        <div class="neg-priority c-slate">الأولوية الثالثة (اقتصادي)</div>
+        <div class="neg-name">العرض الثالث</div>
+        <div class="price-row-n">
+          <span class="label">السعر المطروح</span>
+          <span class="val strike">2,900 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">ابدأ السوم بـ</span>
+          <span class="val">2,300 ريال</span>
+        </div>
+        <div class="price-row-n">
+          <span class="label">حدك الأقصى</span>
+          <span class="val max">2,500 ريال</span>
+        </div>
+        <div class="price-row-n" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <span class="label">التوصية</span>
+          <span class="val" style="color:var(--slate);">للميزانية المحدودة فقط</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================
+     VERDICT
+     ============================================================ -->
+<section class="verdict-section">
+  <div class="wrap">
+    <div class="verdict-inner reveal">
+      <div class="verdict-icon-ring">
+        <i data-lucide="zap"></i>
+      </div>
+      <h2>التوصية النهائية</h2>
+      <p>
+        العرض الثاني يجمع بين أقوى معالج بالمقارنة (10 أنوية — الجيل 14)، وأسرع تخزين
+        (Samsung 980 PRO بسرعة 7000 MB/s)، ومضاعفة المساحة (2TB)، وكرت يدعم أحدث
+        تقنيات الذكاء الاصطناعي. هذا هو الجهاز المثالي للمونتاج اليومي والألعاب معاً
+        وبقيمة لا تُضاهى في هذا النطاق السعري.
+      </p>
+      <div class="verdict-highlight">
+        <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+        فاوض على العرض الثاني — الهدف: 3,300 إلى 3,500 ريال
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <div class="wrap">
+    PC Build Analyzer — تقرير مقارنة تقني محايد
+  </div>
+</footer>
+
+</div><!-- .page -->
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+  // Icons
+  lucide.createIcons();
+
+  // Scroll Reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  reveals.forEach(el => io.observe(el));
+
+  // Tab Switcher
+  function switchTab(btn, mode) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    const cards = document.querySelectorAll('.offer-card');
+    const meters = { editing:[95,72,58], gaming:[90,88,70] };
+
+    if (mode === 'all') {
+      cards.forEach(c => { c.style.opacity='1'; c.style.transform=''; });
+    } else {
+      cards.forEach((c,i) => {
+        c.style.opacity = i === 0 ? '1' : '.45';
+        c.style.transform = i === 0 ? 'scale(1.02)' : 'scale(0.98)';
+      });
+    }
+  }
+
+  // Radar Chart
+  const radarCtx = document.getElementById('radarChart').getContext('2d');
+  new Chart(radarCtx, {
+    type: 'radar',
+    data: {
+      labels: ['المعالج', 'كرت الشاشة', 'التخزين', 'الذاكرة', 'الألعاب', 'المونتاج'],
+      datasets: [
+        {
+          label: 'العرض الثاني',
+          data: [95, 90, 98, 85, 90, 95],
+          borderColor: '#22d3ee',
+          backgroundColor: 'rgba(34,211,238,.08)',
+          pointBackgroundColor: '#22d3ee',
+          borderWidth: 2,
+        },
+        {
+          label: 'العرض الأول',
+          data: [70, 90, 50, 85, 88, 72],
+          borderColor: '#818cf8',
+          backgroundColor: 'rgba(129,140,248,.06)',
+          pointBackgroundColor: '#818cf8',
+          borderWidth: 2,
+        },
+        {
+          label: 'العرض الثالث',
+          data: [70, 65, 42, 60, 70, 58],
+          borderColor: '#475569',
+          backgroundColor: 'rgba(71,85,105,.05)',
+          pointBackgroundColor: '#475569',
+          borderWidth: 1.5,
+          borderDash: [4,4],
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { family:'Tajawal', size:12 }, boxWidth:12 }
+        }
+      },
+      scales: {
+        r: {
+          min: 0, max: 100,
+          grid: { color: 'rgba(255,255,255,.05)' },
+          angleLines: { color: 'rgba(255,255,255,.05)' },
+          pointLabels: { color: '#94a3b8', font: { family:'Tajawal', size:12 } },
+          ticks: { display: false }
+        }
+      }
+    }
+  });
+
+  // Storage Bar Chart
+  const stCtx = document.getElementById('storageChart').getContext('2d');
+  new Chart(stCtx, {
+    type: 'bar',
+    data: {
+      labels: ['العرض الثاني\n(Samsung PRO)', 'العرض الأول\n(T-Force)', 'العرض الثالث\n(Kingston)'],
+      datasets: [{
+        label: 'سرعة القراءة (MB/s)',
+        data: [7000, 3500, 3000],
+        backgroundColor: ['rgba(34,211,238,.15)', 'rgba(129,140,248,.12)', 'rgba(71,85,105,.12)'],
+        borderColor: ['#22d3ee','#818cf8','#475569'],
+        borderWidth: 1.5,
+        borderRadius: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,.04)' },
+          ticks: { color: '#64748b', font: { family:'Tajawal', size:11 } }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,.04)' },
+          ticks: { color: '#64748b', font: { family:'Tajawal', size:11 } }
+        }
+      }
+    }
+  });
+</script>
+</body>
+</html>
